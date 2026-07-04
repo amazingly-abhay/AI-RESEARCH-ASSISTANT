@@ -125,6 +125,14 @@ class RetrievalPlanner:
                 explanation="Filings request: querying Chroma document collection only."
             )
 
+        elif intent == ClassifierIntent.EARNINGS_ANALYSIS:
+            return RetrievalPlan(
+                query_sqlite=True,
+                query_documents=True,
+                query_news=True,
+                explanation="Earnings Analysis request: querying SQLite metrics, quarterly document collections, and recent news feeds."
+            )
+
         # For comparison, general financial questions, company overview, follow_ups and hybrid: run hybrid (full search)
         else:
             return RetrievalPlan(

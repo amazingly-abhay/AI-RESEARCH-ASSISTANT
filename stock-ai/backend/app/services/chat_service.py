@@ -179,7 +179,8 @@ class ChatService:
 
         is_stock_intent = class_res.intent.value in {
             "financial_metric", "company_overview", "company_comparison", 
-            "annual_report", "earnings_call", "filings", "latest_news", "hybrid_analysis"
+            "annual_report", "earnings_call", "filings", "latest_news", "hybrid_analysis",
+            "earnings_analysis"
         }
         if is_stock_intent and det_confidence < 0.7 and not eq.company_identifiers:
             clarification_msg = "I couldn't confidently identify which company you are asking about. Could you please specify the company name or ticker?"
@@ -355,7 +356,8 @@ class ChatService:
 
         is_stock_intent = class_res.intent.value in {
             "financial_metric", "company_overview", "company_comparison", 
-            "annual_report", "earnings_call", "filings", "latest_news", "hybrid_analysis"
+            "annual_report", "earnings_call", "filings", "latest_news", "hybrid_analysis",
+            "earnings_analysis"
         }
         if is_stock_intent and det_confidence < 0.7 and not eq.company_identifiers:
             clarification_msg = "I couldn't confidently identify which company you are asking about. Could you please specify the company name or ticker?"
@@ -500,6 +502,27 @@ class ChatService:
                 filtered = [c for c in doc_chunks if any(t.upper() in c.chunk_id.upper() or t.upper() in c.document.upper() for t in tickers)]
                 if filtered:
                     doc_chunks = filtered
+
+            # Validate quality of initial document chunks using the EvidenceValidator (Problem 8 & 9)
+            from app.services.evidence_validator import EvidenceValidator
+            is_valid = EvidenceValidator.validate_chunks(doc_chunks)
+            if not is_valid:
+                logger.info("ChatService: Initial document retrieval quality is low. Retrying with expanded Top-K (top_k=20).")
+                expanded_chunks = self._hybrid._doc_retrieval.retrieve(question, top_k=20)
+                if tickers and expanded_chunks:
+                    filtered_expanded = [
+                        c for c in expanded_chunks 
+                        if any(t.upper() in c.chunk_id.upper() or t.upper() in c.document.upper() for t in tickers)
+                    ]
+                    if filtered_expanded:
+                        expanded_chunks = filtered_expanded
+                
+                # Merge the chunks, avoiding duplicates
+                seen_chunk_ids = {c.chunk_id for c in doc_chunks}
+                for c in expanded_chunks:
+                    if c.chunk_id not in seen_chunk_ids:
+                        doc_chunks.append(c)
+                        seen_chunk_ids.add(c.chunk_id)
             metrics.record_vector((time.perf_counter() - t_start) * 1000.0)
         else:
             logger.info("ChatService: Bypassing Document vector retrieval based on plan.")
@@ -558,12 +581,16 @@ class ChatService:
 
     @staticmethod
     def _ensure_metrics(eq: ExtractedQuery, ctx: RetrievalContext) -> ExtractedQuery:
+        if eq.intent in {IntentType.COMPANY_OVERVIEW, IntentType.COMPARE_COMPANIES}:
+            needed = [MetricName.REVENUE, MetricName.PROFIT, MetricName.EPS, MetricName.PE_RATIO]
+            if not eq.metrics:
+                eq.metrics = needed
+            else:
+                for m in needed:
+                    if m not in eq.metrics:
+                        eq.metrics.append(m)
         if eq.metrics:
             return eq
-        if eq.intent in {IntentType.COMPANY_OVERVIEW, IntentType.COMPARE_COMPANIES}:
-            eq.metrics = [MetricName.REVENUE, MetricName.PROFIT, MetricName.EPS, MetricName.PE_RATIO]
-        if eq.intent == IntentType.RANKING and ctx.requested_metrics:
-            eq.metrics = ctx.requested_metrics
         return eq
 
     @staticmethod

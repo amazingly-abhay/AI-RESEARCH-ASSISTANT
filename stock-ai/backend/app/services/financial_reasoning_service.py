@@ -18,6 +18,7 @@ class FinancialReasoningIntent(str, Enum):
     LIQUIDITY = "liquidity"
     DIVIDEND = "dividend"
     UNKNOWN = "unknown"
+    EARNINGS_ANALYSIS = "earnings_analysis"
 
 
 # Define financial importance guidelines for missing parameters
@@ -41,7 +42,9 @@ METRIC_IMPORTANCE: Dict[str, str] = {
     "working_capital": "Working Capital verifies net operational liquidity buffer available for day-to-day operations.",
     "dividend_history": "Dividend History confirms consistency of payout habits across previous market cycles.",
     "dividend_yield": "Dividend Yield computes the cash return rate on investment from payouts.",
-    "dividend_payout_ratio": "Dividend Payout Ratio checks safety margins, measuring what percentage of earnings are distributed."
+    "dividend_payout_ratio": "Dividend Payout Ratio checks safety margins, measuring what percentage of earnings are distributed.",
+    "revenue": "Revenue (Top-line sales) represents the scale of the company's business activities in the latest period.",
+    "profit": "Net Profit (Bottom-line income) indicates final earnings performance after all overheads and tax."
 }
 
 
@@ -58,6 +61,10 @@ class FinancialReasoningService:
 
     @staticmethod
     def detect_intent(query: str) -> FinancialReasoningIntent:
+        from app.services.earnings_analysis_service import EarningsAnalysisService
+        if EarningsAnalysisService.is_earnings_query(query):
+            return FinancialReasoningIntent.EARNINGS_ANALYSIS
+            
         normalized = query.lower()
         
         valuation_keywords = {"undervalued", "overvalued", "expensive", "cheap", "valuation", "pricing", "attractive", "fair value", "buy tcs", "buy infy", "should i buy", "recommendation"}
@@ -108,6 +115,8 @@ class FinancialReasoningService:
             required = ["current_ratio", "quick_ratio", "working_capital"]
         elif intent == FinancialReasoningIntent.DIVIDEND:
             required = ["dividend_history", "dividend_yield", "dividend_payout_ratio"]
+        elif intent == FinancialReasoningIntent.EARNINGS_ANALYSIS:
+            required = ["revenue", "profit", "operating_margin", "revenue_growth", "profit_growth", "eps_growth"]
 
         available = []
         missing = []
@@ -131,8 +140,14 @@ class FinancialReasoningService:
             for m in required:
                 val = None
                 
+                # Check Revenue & Profit metrics for latest period
+                if m == "revenue" and history:
+                    val = f"Rs. {history[-1]['revenue']:,.0f} crore"
+                elif m == "profit" and history:
+                    val = f"Rs. {history[-1]['profit']:,.0f} crore"
+                    
                 # Check PE Ratio
-                if m == "pe_ratio" and comp_snap and comp_snap.pe_ratio:
+                elif m == "pe_ratio" and comp_snap and comp_snap.pe_ratio:
                     val = comp_snap.pe_ratio
                     
                 # Check historical operating margins

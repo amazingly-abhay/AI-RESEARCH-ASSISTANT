@@ -100,8 +100,8 @@ export const sendConversationMessageStream = async (conversationId, question, on
       buffer = lines.pop()
 
       for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
+        const trimmed = line.trim();
+        if (!trimmed) continue;
 
         if (trimmed.startsWith('event: metadata')) {
           isMetadataEvent = true
@@ -113,10 +113,10 @@ export const sendConversationMessageStream = async (conversationId, question, on
           try {
             const parsed = JSON.parse(rawData)
             if (isMetadataEvent) {
-              onMetadata(parsed)
-              isMetadataEvent = false
+              onMetadata(parsed);
+              isMetadataEvent = false;
             } else if (parsed && parsed.token !== undefined) {
-              onChunk(parsed.token)
+              onChunk(parsed.token);
             }
           } catch (e) {
             console.error('Failed to parse SSE data block:', e)

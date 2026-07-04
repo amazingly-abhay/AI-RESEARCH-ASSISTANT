@@ -201,7 +201,8 @@ async def chat_stream(
 
     is_stock_intent = class_res.intent.value in {
         "financial_metric", "company_overview", "company_comparison", 
-        "annual_report", "earnings_call", "filings", "latest_news", "hybrid_analysis"
+        "annual_report", "earnings_call", "filings", "latest_news", "hybrid_analysis",
+        "earnings_analysis"
     }
     if is_stock_intent and det_confidence < 0.7 and not eq.company_identifiers:
         clarification_msg = "I couldn't confidently identify which company you are asking about. Could you please specify the company name or ticker?"
@@ -599,7 +600,8 @@ async def stream_conversation_message(
     
     is_stock_intent = class_res.intent.value in {
         "financial_metric", "company_overview", "company_comparison", 
-        "annual_report", "earnings_call", "filings", "latest_news", "hybrid_analysis"
+        "annual_report", "earnings_call", "filings", "latest_news", "hybrid_analysis",
+        "earnings_analysis"
     }
     
     async def quick_reject_generator(message: str, metadata: dict) -> AsyncGenerator[str, None]:

@@ -31,6 +31,7 @@ class ClassifierIntent(str, Enum):
     HYBRID_ANALYSIS = "hybrid_analysis"
     FOLLOW_UP = "follow_up"
     UNSUPPORTED = "unsupported"
+    EARNINGS_ANALYSIS = "earnings_analysis"
 
 
 class ClassificationResponse(BaseModel):
@@ -54,7 +55,8 @@ LEGACY_INTENT_MAP = {
     ClassifierIntent.LATEST_NEWS: IntentType.COMPANY_METRIC,
     ClassifierIntent.HYBRID_ANALYSIS: IntentType.UNKNOWN,
     ClassifierIntent.FOLLOW_UP: IntentType.UNKNOWN,
-    ClassifierIntent.UNSUPPORTED: IntentType.UNKNOWN
+    ClassifierIntent.UNSUPPORTED: IntentType.UNKNOWN,
+    ClassifierIntent.EARNINGS_ANALYSIS: IntentType.COMPANY_OVERVIEW
 }
 
 
@@ -78,6 +80,15 @@ class QueryClassifier:
 
         # 1. Fast local checks for basic greetings & capability terms
         normalized = query.strip().lower().rstrip("?!.")
+        
+        # Fast local rule check for Quarterly Earnings Analysis queries
+        from app.services.earnings_analysis_service import EarningsAnalysisService
+        if EarningsAnalysisService.is_earnings_query(query):
+            return ClassificationResponse(
+                intent=ClassifierIntent.EARNINGS_ANALYSIS,
+                reasoning="Fast local match: earnings analysis keyword trigger."
+            )
+            
         greetings = {"hello", "hi", "hey", "good morning", "good afternoon", "good evening"}
         goodbyes = {"bye", "goodbye", "see you", "bye bye", "talk to you later"}
         thanks = {"thanks", "thank you", "thank you so much", "thx", "appreciate it"}
@@ -147,6 +158,11 @@ class QueryClassifier:
     def _fallback_classify(self, query: str) -> ClassifierIntent:
         normalized = query.lower()
         
+        # Check earnings analysis
+        from app.services.earnings_analysis_service import EarningsAnalysisService
+        if EarningsAnalysisService.is_earnings_query(query):
+            return ClassifierIntent.EARNINGS_ANALYSIS
+            
         # Check coreferences first
         follow_up_terms = {"its", "their", "they", "this company", "what about"}
         if any(term in normalized for term in follow_up_terms):

@@ -20,11 +20,34 @@ export default function ChatWindow({
   onClearError,
   onCancel
 }) {
-  const bottomRef = useRef(null)
+  const scrollContainerRef = useRef(null)
+  const isNearBottomRef = useRef(true)
+  const messagesLengthRef = useRef(messages.length)
   const isEmpty = messages.length === 0
 
+  const handleScroll = () => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    isNearBottomRef.current = isAtBottom
+  }
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'auto' })
+    const el = scrollContainerRef.current
+    if (!el) return
+
+    const prevLength = messagesLengthRef.current
+    const newLength = messages.length
+    messagesLengthRef.current = newLength
+
+    const isNewUserMsg = newLength > prevLength && messages[newLength - 1]?.role === 'user'
+
+    if (isNewUserMsg) {
+      isNearBottomRef.current = true
+      el.scrollTop = el.scrollHeight
+    } else if (isNearBottomRef.current) {
+      el.scrollTop = el.scrollHeight
+    }
   }, [messages])
 
   return (
@@ -36,7 +59,11 @@ export default function ChatWindow({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+      <div 
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-6 py-4 space-y-4"
+      >
         {isEmpty ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-gray-500 text-sm">Start a conversation below.</p>
@@ -46,7 +73,6 @@ export default function ChatWindow({
             {messages.map(msg => <Message key={msg.id} message={msg} />)}
           </>
         )}
-        <div ref={bottomRef} />
       </div>
 
       {/* Error banner with retry option */}

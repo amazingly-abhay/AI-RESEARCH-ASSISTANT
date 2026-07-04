@@ -44,6 +44,20 @@ class PromptBuilder:
         hybrid_context: HybridContext,
         reasoning_context: FinancialReasoningContext | None = None
     ) -> str:
+        # Override prompt generation for Earnings Analysis intent to output Morgan Stanley style notes
+        if reasoning_context and getattr(reasoning_context.intent, "value", str(reasoning_context.intent)) == "earnings_analysis":
+            structured = self._build_structured(hybrid_context)
+            documents = self._build_documents(hybrid_context.document_chunks)
+            news = self._build_news(hybrid_context.news_chunks) if hybrid_context.news_chunks else "No recent news available."
+            
+            context_summary = (
+                f"=== STRUCTURED FINANCIAL VALUES ===\n{structured}\n\n"
+                f"=== RETRIEVED REPORT & TRANSCRIPT TEXTS ===\n{documents}\n\n"
+                f"=== LATEST NEWS ===\n{news}"
+            )
+            from app.services.earnings_analysis_service import EarningsAnalysisService
+            return EarningsAnalysisService.get_analyst_prompt(question, context_summary)
+
         structured = self._build_structured(hybrid_context)
         
         # Append reasoning rules section to structured data parameter block (Problem 5)
@@ -75,11 +89,28 @@ class PromptBuilder:
         return prompt
 
     def _build_reasoning_section(self, rc: FinancialReasoningContext) -> str:
+        domain_map = {
+            "valuation": "valuation",
+            "growth": "growth_analysis",
+            "profitability": "financial_health",
+            "risk": "business_risk",
+            "liquidity": "financial_risk",
+            "dividend": "dividend_analysis",
+        }
+        domain_key = domain_map.get(rc.intent.value, rc.intent.value)
+
+        # Fetch domain rules and tone constraints
+        from app.services.financial_reasoning_rules import FinancialReasoningRules
+        from app.services.analysis_templates import AnalysisTemplates
+
+        profile = FinancialReasoningRules.get_domain_profile(domain_key)
+        domain_name = profile.get("domain_name", domain_key.upper()) if profile else domain_key.upper()
+        
         lines = [
             "=========================================",
             "CRITICAL FINANCIAL REASONING SYSTEM RULES",
             "=========================================",
-            f"User is asking a stock analysis question related to: {rc.intent.value.upper()}.",
+            f"User is asking a stock analysis question related to: {domain_name}.",
             "",
             "AVAILABLE METRICS (use only these, never invent or hallucinate data):",
         ]
@@ -99,6 +130,13 @@ class PromptBuilder:
         else:
             lines.append("  - None")
 
+        # Append domain specific guidelines
+        if profile and profile.get("rules"):
+            lines.append("")
+            lines.append("DOMAIN SPECIFIC GUIDELINES:")
+            for r in profile["rules"]:
+                lines.append(f"  - {r}")
+
         lines.append("")
         lines.append("STRICT LLM BEHAVIORAL DIRECTIVES:")
         lines.append("1. Data limitations mapping:")
@@ -107,13 +145,20 @@ class PromptBuilder:
         lines.append("   - Explain why the missing information is important to make a complete assessment.")
         lines.append("   - Cautiously state that there is insufficient evidence to make a definitive conclusion.")
         lines.append("2. Cautious Language requirement:")
-        lines.append("   - Use words like: suggests, may indicate, could imply, appears, based on available information.")
-        lines.append("   - NEVER use definitive words like: definitely, guaranteed, will, must, certainly.")
+        lines.append("   - Use words like: suggests, indicates, may imply, appears, based on available evidence, likely.")
+        lines.append("   - NEVER use definitive words like: definitely, guaranteed, will, must, certainly, will definitely.")
         lines.append("3. Advisory constraints:")
         lines.append("   - Do NOT provide buy, sell, or hold recommendations under any circumstances.")
         lines.append("   - Discuss strengths and weaknesses using available metrics and facts objectively.")
         lines.append("   - You MUST end your response with this disclaimer:")
         lines.append("     'This information is for educational purposes and should not be considered investment advice.'")
+
+        # Append response template requirement
+        template_str = AnalysisTemplates.get_template(domain_key)
+        if template_str:
+            lines.append("")
+            lines.append(template_str)
+
         lines.append("=========================================")
         return "\n".join(lines)
 

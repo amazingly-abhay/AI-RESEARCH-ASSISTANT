@@ -139,27 +139,36 @@ export const useChat = () => {
         currentId,
         question,
         (token) => {
-          setMessages(prev => prev.map(msg =>
-            msg.id === assistantMsgId ? { ...msg, content: msg.content + token } : msg
-          ))
+          // Append streamed tokens to current message
+          setMessages(prev => prev.map(msg => {
+            if (msg.id === assistantMsgId) {
+              return {
+                ...msg,
+                content: msg.content + token
+              }
+            }
+            return msg
+          }))
         },
         (metadata) => {
-          setMessages(prev => prev.map(msg =>
-            msg.id === assistantMsgId
-              ? {
-                  ...msg,
-                  loading: false,
-                  intent: metadata.intent,
-                  companies: metadata.companies || [],
-                  metrics: metadata.metrics || [],
-                  financial_data: metadata.financial_data || {},
-                  documents: metadata.documents || [],
-                  news: metadata.news || [],
-                  sources: metadata.sources || [],
-                  warnings: metadata.warnings || [],
-                }
-              : msg
-          ))
+          // Append citation sources and formatting at the end
+          setMessages(prev => prev.map(msg => {
+            if (msg.id === assistantMsgId) {
+              return {
+                ...msg,
+                loading: false, // Turn off active cursor
+                intent: metadata.intent,
+                companies: metadata.companies || [],
+                metrics: metadata.metrics || [],
+                financial_data: metadata.financial_data || {},
+                documents: metadata.documents || [],
+                news: metadata.news || [],
+                sources: metadata.sources || [],
+                warnings: metadata.warnings || [],
+              }
+            }
+            return msg
+          }))
         },
         controller.signal
       )

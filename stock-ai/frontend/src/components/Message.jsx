@@ -27,6 +27,26 @@ function getSourceLabel(url) {
   }
 }
 
+// Bouncing three-dot thinking indicator
+function ThinkingIndicator() {
+  return (
+    <div className="flex items-center gap-1.5 bg-transparent px-3 py-2.5 select-none mt-1">
+      <span 
+        className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" 
+        style={{ animationDelay: '0ms' }} 
+      />
+      <span 
+        className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" 
+        style={{ animationDelay: '150ms' }} 
+      />
+      <span 
+        className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" 
+        style={{ animationDelay: '300ms' }} 
+      />
+    </div>
+  )
+}
+
 // Metric card — matches the 4-column grid in the image
 function MetricCard({ label, value, change, positive }) {
   return (
@@ -154,6 +174,8 @@ export default function Message({ message }) {
     )
   }
 
+  const isThinking = message.loading && (!message.content || message.content.trim() === '')
+
   return (
     <div className="flex items-start gap-3">
       {/* Avatar */}
@@ -161,32 +183,42 @@ export default function Message({ message }) {
         🐼
       </div>
 
-      {/* Card */}
-      <div className="flex-1 min-w-0 bg-[#111827] border border-[#1F2937] rounded-2xl rounded-tl-sm px-5 py-4 shadow-lg">
-        {/* Answer text */}
-        <div className="prose-dark text-sm inline">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-          {message.role === 'assistant' && message.loading && (
-            <span className="ml-1 text-indigo-400 font-semibold animate-pulse align-middle">▌</span>
+      {isThinking ? (
+        /* Thinking animation when no token has arrived yet */
+        <ThinkingIndicator />
+      ) : (
+        /* Card Container - grows naturally */
+        <div className="flex-1 min-w-0 bg-[#111827] border border-[#1F2937] rounded-2xl rounded-tl-sm px-5 py-4 shadow-lg">
+          {message.loading ? (
+            /* Stream fast text display to avoid flickering and layout shifts */
+            <div className="whitespace-pre-wrap leading-relaxed text-gray-200 text-sm">
+              {message.content}
+              <span className="ml-1 text-indigo-400 font-semibold animate-pulse align-middle">▌</span>
+            </div>
+          ) : (
+            /* Final rich Markdown rendering once stream is complete */
+            <div className="prose-dark text-sm">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+            </div>
           )}
+
+          {/* Financial metrics grid */}
+          <FinancialMetrics data={message.financial_data} />
+
+          {/* Sources row */}
+          <SourceRow sources={message.sources} documents={message.documents} news={message.news} />
+
+          {/* Warnings */}
+          {message.warnings?.length > 0 && (
+            <div className="mt-3 text-xs text-yellow-400/80 bg-yellow-500/5 border border-yellow-500/20 rounded-lg px-3 py-2">
+              ⚠ {message.warnings.join(', ')} not found in database.
+            </div>
+          )}
+
+          {/* Timestamp */}
+          <p className="text-[11px] text-gray-500 mt-3">{formatTime(message.id)}</p>
         </div>
-
-        {/* Financial metrics grid */}
-        <FinancialMetrics data={message.financial_data} />
-
-        {/* Sources row */}
-        <SourceRow sources={message.sources} documents={message.documents} news={message.news} />
-
-        {/* Warnings */}
-        {message.warnings?.length > 0 && (
-          <div className="mt-3 text-xs text-yellow-400/80 bg-yellow-500/5 border border-yellow-500/20 rounded-lg px-3 py-2">
-            ⚠ {message.warnings.join(', ')} not found in database.
-          </div>
-        )}
-
-        {/* Timestamp */}
-        <p className="text-[11px] text-gray-500 mt-3">{formatTime(message.id)}</p>
-      </div>
+      )}
     </div>
   )
 }

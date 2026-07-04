@@ -41,29 +41,56 @@ class DocumentRetrievalService:
         )
         self._ingest_new_documents()
 
-    def retrieve(self, query: str) -> list[DocumentChunk]:
+    def retrieve(self, query: str, top_k: int | None = None) -> list[DocumentChunk]:
         total = self._collection.count()
         if total == 0:
             logger.warning("DocumentRetrieval: collection empty.")
             return []
-        n = min(self._settings.retrieval_top_k, total)
-        logger.info("DocumentRetrieval: querying top_k=%d query=%r", n, query)
+        
+        target_n = top_k or self._settings.retrieval_top_k
+        # Fetch candidate pool twice the size of target top_k to enable keyword boosting
+        candidate_n = min(target_n * 2, total)
+        
+        logger.info("DocumentRetrieval: querying candidate_n=%d target_top_k=%d query=%r", candidate_n, target_n, query)
         results = self._collection.query(
-            query_texts=[query], n_results=n,
+            query_texts=[query], n_results=candidate_n,
             include=["documents", "distances", "metadatas"],
         )
         ids = results.get("ids", [[]])[0]
         docs = results.get("documents", [[]])[0]
         distances = results.get("distances", [[]])[0]
         chunks = []
+        
+        BOOST_KEYWORDS = [
+            "revenue", "net profit", "profit", "eps", "operating margin", "ebit margin", 
+            "yoy", "qoq", "guidance", "management commentary", "financial highlights", 
+            "quarter ended"
+        ]
+
         for chunk_id, content, dist in zip(ids, docs, distances):
             doc_name = chunk_id.split("::")[0] if "::" in chunk_id else chunk_id
+            
+            # Boost calculations: subtract boost from distance metric (lower distance is more relevant)
+            boost = 0.0
+            content_lower = content.lower()
+            for kw in BOOST_KEYWORDS:
+                if kw in content_lower:
+                    boost += 0.05
+                    
+            boosted_dist = max(0.0, dist - boost)
+            
             chunks.append(DocumentChunk(
                 chunk_id=chunk_id, document=doc_name,
-                content=content, relevance_score=round(dist, 4),
+                content=content, relevance_score=round(boosted_dist, 4),
             ))
-        logger.info("DocumentRetrieval: returned %d chunks.", len(chunks))
-        return chunks
+            
+        # Re-sort candidates based on their boosted distance relevance
+        chunks.sort(key=lambda c: c.relevance_score)
+        
+        # Sliced return to fit target constraints
+        result_chunks = chunks[:target_n]
+        logger.info("DocumentRetrieval: returned %d boosted chunks.", len(result_chunks))
+        return result_chunks
 
     def _ingest_new_documents(self) -> None:
         docs_dir = self._settings.documents_dir
