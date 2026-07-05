@@ -86,6 +86,24 @@ class PromptBuilder:
             )
             logger.info("PromptBuilder: hybrid prompt. sql=%d docs=%d",
                         len(hybrid_context.companies), len(hybrid_context.document_chunks))
+
+        # Append strict output formatting override based on the intent (Problem 7)
+        from app.services.response_formatter import ResponseFormatter
+        intent_val = "company_overview"
+        if reasoning_context:
+            intent_val = reasoning_context.intent.value
+            
+        format_instr = ResponseFormatter.get_formatting_instructions(question, intent_val)
+        
+        override_section = (
+            "\n\n======================\n"
+            "STRICT RESPONSE FORMATTING DIRECTIVE:\n"
+            "You MUST completely ignore the general 'Instructions' section above. "
+            "Instead, structure your response strictly using the following instructions and layout template:\n"
+            f"{format_instr}"
+        )
+        prompt = prompt + override_section
+
         return prompt
 
     def _build_reasoning_section(self, rc: FinancialReasoningContext) -> str:

@@ -79,6 +79,19 @@ class CompanyNewsPayload(BaseModel):
     content: str
 
 
+class MarketDataPayload(BaseModel):
+    current_price: float
+    currency: str
+    daily_change: float
+    percentage_change: float
+    day_high: float
+    day_low: float
+    previous_close: float
+    market_status: str | None = None
+    last_updated: str
+    source: str
+
+
 class FinancialDataProvider(ABC):
     """Abstract interface defining data acquisition for the Data-Aware system."""
 
@@ -116,4 +129,9 @@ class FinancialDataProvider(ABC):
     @abstractmethod
     def get_news(self, ticker: str) -> list[CompanyNewsPayload]:
         """Fetch latest stock news articles."""
+        pass
+
+    @abstractmethod
+    def get_live_market_data(self, ticker: str) -> MarketDataPayload | None:
+        """Fetch real-time stock price and market metrics (current price, day high/low, changes)."""
         pass

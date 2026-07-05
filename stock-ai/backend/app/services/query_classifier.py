@@ -32,6 +32,7 @@ class ClassifierIntent(str, Enum):
     FOLLOW_UP = "follow_up"
     UNSUPPORTED = "unsupported"
     EARNINGS_ANALYSIS = "earnings_analysis"
+    MARKET_DATA = "market_data"
 
 
 class ClassificationResponse(BaseModel):
@@ -56,7 +57,8 @@ LEGACY_INTENT_MAP = {
     ClassifierIntent.HYBRID_ANALYSIS: IntentType.UNKNOWN,
     ClassifierIntent.FOLLOW_UP: IntentType.UNKNOWN,
     ClassifierIntent.UNSUPPORTED: IntentType.UNKNOWN,
-    ClassifierIntent.EARNINGS_ANALYSIS: IntentType.COMPANY_OVERVIEW
+    ClassifierIntent.EARNINGS_ANALYSIS: IntentType.COMPANY_OVERVIEW,
+    ClassifierIntent.MARKET_DATA: IntentType.COMPANY_METRIC
 }
 
 
@@ -88,6 +90,18 @@ class QueryClassifier:
                 intent=ClassifierIntent.EARNINGS_ANALYSIS,
                 reasoning="Fast local match: earnings analysis keyword trigger."
             )
+
+        # Fast local check for market data query (Problem 1)
+        market_phrases = {
+            "current stock price", "share price", "live price", "today's price", 
+            "market price", "current price", "stock quote", "last traded price", 
+            "ltp", "stock trading at"
+        }
+        if any(phrase in normalized for phrase in market_phrases):
+            return ClassificationResponse(
+                intent=ClassifierIntent.MARKET_DATA,
+                reasoning="Fast local match: live market price keywords trigger."
+            )
             
         greetings = {"hello", "hi", "hey", "good morning", "good afternoon", "good evening"}
         goodbyes = {"bye", "goodbye", "see you", "bye bye", "talk to you later"}
@@ -118,6 +132,7 @@ class QueryClassifier:
             f"- earnings_call: transcripts, conference calls (e.g. 'TCS earnings call summary')\n"
             f"- filings: filings lookup, documents index (e.g. 'Show me corporate filings')\n"
             f"- latest_news: recent news/headlines (e.g. 'Latest news on TCS')\n"
+            f"- market_data: seeking real-time share pricing, stock quotes, today's price, or ltp (e.g. 'What is TCS share price?', 'Current price of Apple')\n"
             f"- hybrid_analysis: general combination of multiple financial topics, stock recommendations, or investment evaluation questions (e.g. 'Should I buy TCS?', 'Is Infosys a good investment?')\n"
             f"- follow_up: questions containing coreferences like 'its', 'their', 'this' (e.g. 'What about its profit?', 'What are their risks?')\n"
             f"- unsupported: queries completely unrelated to stocks, companies, finance, annual reports, or filings (e.g. 'Who won IPL?', 'What is the weather today?', movies, politics)\n\n"

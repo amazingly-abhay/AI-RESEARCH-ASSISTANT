@@ -112,6 +112,23 @@ class ChatService:
         logger.info("ChatService.answer_news: question=%r session=%s", question, session_id)
         metrics = MetricsLogger(question)
 
+        # Check for local small talk / greeting intercept (Problem 1)
+        from app.services.greeting_normalizer import GreetingNormalizer
+        sc_res = GreetingNormalizer.get_short_circuit_response(question)
+        if sc_res:
+            metrics.log_intent(sc_res["intent"])
+            metrics.record_confidence("High")
+            metrics.finalize()
+            if session_id:
+                self._session_memory.add_message(session_id, "user", question)
+                self._session_memory.add_message(session_id, "assistant", sc_res["response"])
+            return NewsResponse(
+                answer=sc_res["response"],
+                intent=IntentType.UNKNOWN, companies=[], metrics=[],
+                financial_data={}, documents=[], news=[], sources=[],
+                warnings=[]
+            )
+
         # 1. Input Guardrails
         is_safe, reject_msg = self._input_guardrail.evaluate(question)
         if not is_safe:
@@ -134,6 +151,29 @@ class ChatService:
             question_to_search = resolved_question
         else:
             question_to_search = question
+
+        # Intercept real-time market data query (Problem 2)
+        if class_res.intent == ClassifierIntent.MARKET_DATA:
+            from app.services.market_data_service import MarketDataService
+            market_svc = MarketDataService(self._ai, self._ai.settings)
+            data = market_svc.get_live_data(question_to_search)
+            ticker, name, conf = market_svc._detector.detect(question_to_search)
+            resolved_ticker = ticker.upper() if ticker else "STOCK"
+            if data:
+                response_msg = MarketDataService.format_market_data(data, resolved_ticker)
+            else:
+                response_msg = "Real-time pricing is not available at this moment. Please verify the company ticker or try again later."
+            
+            if session_id:
+                self._session_memory.add_message(session_id, "user", question)
+                self._session_memory.add_message(session_id, "assistant", response_msg)
+                
+            return NewsResponse(
+                answer=response_msg,
+                intent=IntentType.COMPANY_METRIC, companies=[resolved_ticker] if ticker else [],
+                metrics=["price"], financial_data={}, documents=[], news=[],
+                sources=[f"{data.source} Market Feed"] if data else [], warnings=[]
+            )
 
         metrics.log_intent(class_res.intent.value)
         legacy_intent = LEGACY_INTENT_MAP.get(class_res.intent, IntentType.UNKNOWN)
@@ -191,7 +231,7 @@ class ChatService:
                 answer=clarification_msg,
                 intent=legacy_intent, companies=[], metrics=[],
                 financial_data={}, documents=[], news=[], sources=[],
-                warnings=[]
+                warnings=["Query blocked by safety guardrails"]
             )
 
         if det_ticker and det_confidence >= 0.7:
@@ -289,6 +329,23 @@ class ChatService:
         logger.info("ChatService.answer_hybrid: question=%r session=%s", question, session_id)
         metrics = MetricsLogger(question)
 
+        # Check for local small talk / greeting intercept (Problem 1)
+        from app.services.greeting_normalizer import GreetingNormalizer
+        sc_res = GreetingNormalizer.get_short_circuit_response(question)
+        if sc_res:
+            metrics.log_intent(sc_res["intent"])
+            metrics.record_confidence("High")
+            metrics.finalize()
+            if session_id:
+                self._session_memory.add_message(session_id, "user", question)
+                self._session_memory.add_message(session_id, "assistant", sc_res["response"])
+            return HybridChatResponse(
+                answer=sc_res["response"],
+                intent=IntentType.UNKNOWN, companies=[], metrics=[],
+                structured_data={}, retrieved_documents=[], sources=[],
+                warnings=[]
+            )
+
         # 1. Guardrail
         is_safe, reject_msg = self._input_guardrail.evaluate(question)
         if not is_safe:
@@ -311,6 +368,29 @@ class ChatService:
             question_to_search = resolved_question
         else:
             question_to_search = question
+
+        # Intercept real-time market data query (Problem 2)
+        if class_res.intent == ClassifierIntent.MARKET_DATA:
+            from app.services.market_data_service import MarketDataService
+            market_svc = MarketDataService(self._ai, self._ai.settings)
+            data = market_svc.get_live_data(question_to_search)
+            ticker, name, conf = market_svc._detector.detect(question_to_search)
+            resolved_ticker = ticker.upper() if ticker else "STOCK"
+            if data:
+                response_msg = MarketDataService.format_market_data(data, resolved_ticker)
+            else:
+                response_msg = "Real-time pricing is not available at this moment. Please verify the company ticker or try again later."
+            
+            if session_id:
+                self._session_memory.add_message(session_id, "user", question)
+                self._session_memory.add_message(session_id, "assistant", response_msg)
+                
+            return HybridChatResponse(
+                answer=response_msg,
+                intent=IntentType.COMPANY_METRIC, companies=[resolved_ticker] if ticker else [],
+                metrics=["price"], structured_data={}, retrieved_documents=[],
+                sources=[f"{data.source} Market Feed"] if data else [], warnings=[]
+            )
 
         metrics.log_intent(class_res.intent.value)
         legacy_intent = LEGACY_INTENT_MAP.get(class_res.intent, IntentType.UNKNOWN)

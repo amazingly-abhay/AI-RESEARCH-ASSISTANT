@@ -14,7 +14,7 @@ from google.genai import types
 from app.providers.financial.base_provider import (
     FinancialDataProvider, CompanyProfilePayload, CompanyFinancialsPayload,
     CompanyHistoricalFinancialsPayload, CompanyDividendPayload,
-    CompanyDocumentPayload, CompanyNewsPayload
+    CompanyDocumentPayload, CompanyNewsPayload, MarketDataPayload
 )
 from app.services.ai_service import GeminiAIService
 
@@ -219,3 +219,29 @@ class PolygonProvider(FinancialDataProvider):
             ),
         )
         return response.parsed.news if response.parsed else []  # type: ignore
+
+    def get_live_market_data(self, ticker: str) -> MarketDataPayload | None:
+        logger.info("PolygonProvider: get_live_market_data ticker=%s", ticker)
+        prompt = (
+            f"Research and compile real-time market data for stock ticker '{ticker}'. "
+            f"Provide current price, currency, daily change, percentage change, day high, day low, previous close, "
+            f"market status (open/closed), and last updated timestamp.\n"
+            f"Respond only with JSON matching the MarketDataPayload schema."
+        )
+        try:
+            response = self._ai.client.models.generate_content(
+                model=self._ai.settings.gemini_model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction="You are an expert real-time stock market data feed. Return structured JSON.",
+                    temperature=0.0,
+                    response_mime_type="application/json",
+                    response_schema=MarketDataPayload,
+                ),
+            )
+            if response.parsed and isinstance(response.parsed, MarketDataPayload):
+                return response.parsed
+            raise RuntimeError("Failed to parse market data payload.")
+        except Exception as exc:
+            logger.error("PolygonProvider: get_live_market_data failed: %s", exc)
+            return None

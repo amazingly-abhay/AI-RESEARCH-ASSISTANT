@@ -139,6 +139,19 @@ async def chat_stream(
         yield f"event: metadata\ndata: {json.dumps(metadata)}\n\n"
         yield "event: close\ndata: {}\n\n"
 
+    # Local intercept for Greetings, Farewell, Thanks, Capabilities, and Small Talk (Problem 1)
+    from app.services.greeting_normalizer import GreetingNormalizer
+    sc_res = GreetingNormalizer.get_short_circuit_response(question)
+    if sc_res:
+        return StreamingResponse(
+            quick_reject_generator(
+                sc_res["response"],
+                {"intent": "unknown", "companies": [], "metrics": [], "financial_data": {},
+                 "documents": [], "news": [], "sources": [], "warnings": []}
+            ),
+            media_type="text/event-stream"
+        )
+
     # 1. Evaluate safety
     is_safe, reject_msg = svc._input_guardrail.evaluate(question)
     if not is_safe:
@@ -153,6 +166,27 @@ async def chat_stream(
 
     # 2. Query Intent Classification
     class_res = svc._query_classifier.classify(question)
+
+    # Intercept real-time market data query (Problem 2)
+    if class_res.intent == ClassifierIntent.MARKET_DATA:
+        from app.services.market_data_service import MarketDataService
+        market_svc = MarketDataService(ai_service, ai_service.settings)
+        data = market_svc.get_live_data(question)
+        ticker, name, conf = market_svc._detector.detect(question)
+        resolved_ticker = ticker.upper() if ticker else "STOCK"
+        if data:
+            response_msg = MarketDataService.format_market_data(data, resolved_ticker)
+        else:
+            response_msg = "Real-time pricing is not available at this moment. Please verify the company ticker or try again later."
+            
+        return StreamingResponse(
+            quick_reject_generator(
+                response_msg,
+                {"intent": "company_metric", "companies": [resolved_ticker] if ticker else [], "metrics": ["price"], "financial_data": {},
+                 "documents": [], "news": [], "sources": [f"{data.source} Market Feed"] if data else [], "warnings": []}
+            ),
+            media_type="text/event-stream"
+        )
 
     # 3. Follow-up query resolution
     if class_res.intent == ClassifierIntent.FOLLOW_UP:
@@ -571,7 +605,48 @@ async def stream_conversation_message(
     db.add(user_msg)
     db.commit()
     
-    # 2. Check and generate title if it is the first user message
+    # 2. Check for small talk / greeting intercept before doing any Company Detection/Retrievals (Problem 1 & 2)
+    from app.services.greeting_normalizer import GreetingNormalizer
+    sc_res = GreetingNormalizer.get_short_circuit_response(question_content)
+    if sc_res:
+        user_msg_count = db.query(Message).filter(Message.conversation_id == id, Message.role == "user").count()
+        if user_msg_count == 1:
+            conv.title = sc_res["intent"].capitalize()
+            db.commit()
+            
+        async def quick_reject_generator(message: str, metadata: dict) -> AsyncGenerator[str, None]:
+            yield f"data: {json.dumps({'token': message})}\n\n"
+            yield f"event: metadata\ndata: {json.dumps(metadata)}\n\n"
+            yield "event: close\ndata: {}\n\n"
+            # Also save to database
+            assistant_msg = Message(
+                conversation_id=id,
+                role="assistant",
+                content=message,
+                timestamp=datetime.utcnow(),
+                intent="unknown",
+                companies="[]",
+                metrics="[]",
+                financial_data="{}",
+                documents="[]",
+                news="[]",
+                sources="[]",
+                warnings="[]"
+            )
+            db.add(assistant_msg)
+            conv.updated_at = datetime.utcnow()
+            db.commit()
+            
+        return StreamingResponse(
+            quick_reject_generator(
+                sc_res["response"],
+                {"intent": "unknown", "companies": [], "metrics": [], "financial_data": {},
+                 "documents": [], "news": [], "sources": [], "warnings": []}
+            ),
+            media_type="text/event-stream"
+        )
+
+    # 3. Check and generate title if it is the first user message
     user_msg_count = db.query(Message).filter(Message.conversation_id == id, Message.role == "user").count()
     if user_msg_count == 1:
         title = generate_chat_title(question_content, svc._ai)
@@ -589,6 +664,55 @@ async def stream_conversation_message(
     plan = svc._retrieval_planner.create_plan(class_res.intent)
     legacy_intent = LEGACY_INTENT_MAP.get(class_res.intent, IntentType.UNKNOWN)
     required_dims = svc._detector.determine_required_data(question_content, class_res.intent.value)
+
+    # Intercept real-time market data query (Problem 2)
+    if class_res.intent == ClassifierIntent.MARKET_DATA:
+        from app.services.market_data_service import MarketDataService
+        market_svc = MarketDataService(svc._ai, svc._ai.settings)
+        data = market_svc.get_live_data(question_content)
+        ticker, name, conf = market_svc._detector.detect(question_content)
+        resolved_ticker = ticker.upper() if ticker else "STOCK"
+        if data:
+            response_msg = MarketDataService.format_market_data(data, resolved_ticker)
+        else:
+            response_msg = "Real-time pricing is not available at this moment. Please verify the company ticker or try again later."
+            
+        if user_msg_count == 1:
+            conv.title = f"{resolved_ticker} Live Price"
+            db.commit()
+            
+        async def quick_reject_generator(message: str, metadata: dict) -> AsyncGenerator[str, None]:
+            yield f"data: {json.dumps({'token': message})}\n\n"
+            yield f"event: metadata\ndata: {json.dumps(metadata)}\n\n"
+            yield "event: close\ndata: {}\n\n"
+            # Also save to database
+            assistant_msg = Message(
+                conversation_id=id,
+                role="assistant",
+                content=message,
+                timestamp=datetime.utcnow(),
+                intent="company_metric",
+                companies=json.dumps([resolved_ticker]) if ticker else "[]",
+                metrics="[\"price\"]",
+                financial_data="{}",
+                documents="[]",
+                news="[]",
+                sources="[]",
+                warnings="[]"
+            )
+            db.add(assistant_msg)
+            conv.updated_at = datetime.utcnow()
+            db.commit()
+            
+        return StreamingResponse(
+            quick_reject_generator(
+                response_msg,
+                {"intent": legacy_intent, "companies": [resolved_ticker] if ticker else [],
+                 "metrics": ["price"], "financial_data": {}, "documents": [], "news": [],
+                 "sources": [f"{data.source} Market Feed"] if data else [], "warnings": []}
+            ),
+            media_type="text/event-stream"
+        )
     
     catalog = svc._db.get_company_catalog()
     eq = svc._ai.extract_query(question=question_content, company_catalog=catalog)
