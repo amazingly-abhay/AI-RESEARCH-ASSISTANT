@@ -27,6 +27,8 @@ class Company(Base):
     website: Mapped[str | None] = mapped_column(String(255), nullable=True)
     listing_exchange: Mapped[str | None] = mapped_column(String(255), nullable=True)
     country: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_updated: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    data_source: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class CompanyFinancialHistory(Base):

@@ -115,6 +115,25 @@ class TokenStreamer:
                 else:
                     yield f"data: {json.dumps({'token': holding_buffer})}\n\n"
 
+            # Yield data freshness metadata note (Requirement 10)
+            freshness_notes = []
+            if metadata and "financial_data" in metadata:
+                for ticker, info in metadata["financial_data"].items():
+                    if isinstance(info, dict) and "company_name" in info:
+                        c_name = info.get("company_name", ticker)
+                        status = "Live API" if info.get("is_live") else "Cache"
+                        src = info.get("data_source") or "Financial Provider"
+                        t_stamp = info.get("last_updated") or "unknown"
+                        freshness_notes.append(f"\n\n*{c_name} data current as of: {t_stamp} (Fetched from {src} via {status})*")
+            if freshness_notes:
+                yield f"data: {json.dumps({'token': ''.join(freshness_notes)})}\n\n"
+
+            # Yield freshness fallback notice warnings if any (Requirement 5)
+            if metadata and "warnings" in metadata:
+                for warning in metadata["warnings"]:
+                    if "cached records" in warning or "API fetch failed" in warning:
+                        yield f"data: {json.dumps({'token': f'\n\n⚠️ **Notice**: {warning}'})}\n\n"
+
             # 1. Yield computed confidence & citation metadata in a special event
             logger.info("TokenStreamer: LLM stream finished. Sending consolidated metadata payload...")
             yield f"event: metadata\ndata: {json.dumps(metadata)}\n\n"

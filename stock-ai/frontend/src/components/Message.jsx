@@ -70,10 +70,11 @@ function FinancialMetrics({ data }) {
   const metrics = []
 
   entries.forEach(([ticker, d]) => {
-    if (d.revenue) metrics.push({ label: 'Revenue', value: `₹${Number(d.revenue).toLocaleString('en-IN')} Cr`, change: d.revenue_yoy ? `${d.revenue_yoy}% YoY` : null })
-    if (d.profit) metrics.push({ label: 'Net Profit', value: `₹${Number(d.profit).toLocaleString('en-IN')} Cr`, change: d.profit_yoy ? `${d.profit_yoy}% YoY` : null })
-    if (d.operating_margin) metrics.push({ label: 'Operating Margin', value: `${d.operating_margin}%`, change: d.margin_yoy ? `${d.margin_yoy}% YoY` : null })
-    if (d.eps) metrics.push({ label: 'EPS', value: `₹${d.eps}`, change: d.eps_yoy ? `${d.eps_yoy}% YoY` : null })
+    const period = d.reporting_period ? ` (${d.reporting_period})` : ''
+    if (d.revenue) metrics.push({ label: `Revenue${period}`, value: `₹${Number(d.revenue).toLocaleString('en-IN')} Cr`, change: d.revenue_yoy ? `${d.revenue_yoy}% YoY` : null })
+    if (d.profit) metrics.push({ label: `Net Profit${period}`, value: `₹${Number(d.profit).toLocaleString('en-IN')} Cr`, change: d.profit_yoy ? `${d.profit_yoy}% YoY` : null })
+    if (d.operating_margin) metrics.push({ label: `Operating Margin${period}`, value: `${d.operating_margin}%`, change: d.margin_yoy ? `${d.margin_yoy}% YoY` : null })
+    if (d.eps) metrics.push({ label: `EPS${period}`, value: `₹${d.eps}`, change: d.eps_yoy ? `${d.eps_yoy}% YoY` : null })
   })
 
   if (metrics.length === 0) return null

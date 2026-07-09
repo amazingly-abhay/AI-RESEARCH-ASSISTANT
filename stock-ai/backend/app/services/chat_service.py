@@ -305,6 +305,26 @@ class ChatService:
         elif DISCLAIMER not in answer:
             answer = f"{answer}\n\n{DISCLAIMER}"
 
+        # Build freshness note metadata and fallback notices (Requirement 5 & 10)
+        freshness_notes = []
+        financial_data = self._structured_data(ctx.companies)
+        for ticker, info in financial_data.items():
+            c_name = info.get("company_name", ticker)
+            status = "Live API" if info.get("is_live") else "Cache"
+            src = info.get("data_source") or "Financial Provider"
+            t_stamp = info.get("last_updated") or "unknown"
+            freshness_notes.append(f"\n\n*{c_name} data current as of: {t_stamp} (Fetched from {src} via {status})*")
+            
+        fallback_warnings = []
+        for note in ctx.sql_context.analysis_notes:
+            if "cached records" in note or "API fetch failed" in note:
+                fallback_warnings.append(f"\n\n⚠️ **Notice**: {note}")
+                
+        if freshness_notes:
+            answer = answer + "".join(freshness_notes)
+        if fallback_warnings:
+            answer = answer + "".join(fallback_warnings)
+
         # 14. Update conversation memory
         self._session_memory.add_message(session_id or "default_session", "user", question)
         self._session_memory.add_message(session_id or "default_session", "assistant", answer)
@@ -513,6 +533,26 @@ class ChatService:
         elif DISCLAIMER not in answer:
             answer = f"{answer}\n\n{DISCLAIMER}"
 
+        # Build freshness note metadata and fallback notices (Requirement 5 & 10)
+        freshness_notes = []
+        financial_data = self._structured_data(ctx.companies)
+        for ticker, info in financial_data.items():
+            c_name = info.get("company_name", ticker)
+            status = "Live API" if info.get("is_live") else "Cache"
+            src = info.get("data_source") or "Financial Provider"
+            t_stamp = info.get("last_updated") or "unknown"
+            freshness_notes.append(f"\n\n*{c_name} data current as of: {t_stamp} (Fetched from {src} via {status})*")
+            
+        fallback_warnings = []
+        for note in ctx.sql_context.analysis_notes:
+            if "cached records" in note or "API fetch failed" in note:
+                fallback_warnings.append(f"\n\n⚠️ **Notice**: {note}")
+                
+        if freshness_notes:
+            answer = answer + "".join(freshness_notes)
+        if fallback_warnings:
+            answer = answer + "".join(fallback_warnings)
+
         self._session_memory.add_message(session_id or "default_session", "user", question)
         self._session_memory.add_message(session_id or "default_session", "assistant", answer)
 
@@ -682,6 +722,9 @@ class ChatService:
                 "profit": c.profit,
                 "eps": c.eps,
                 "pe_ratio": c.pe_ratio,
+                "last_updated": c.last_updated,
+                "data_source": c.data_source,
+                "is_live": c.is_live,
             }
             for c in companies
         }

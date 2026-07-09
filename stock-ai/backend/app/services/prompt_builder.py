@@ -102,7 +102,14 @@ class PromptBuilder:
             "Instead, structure your response strictly using the following instructions and layout template:\n"
             f"{format_instr}"
         )
-        prompt = prompt + override_section
+        no_hallucinate_clause = (
+            "\n\n======================\n"
+            "CRITICAL DATA FRESHNESS CONSTRAINT:\n"
+            "Do NOT invent, approximate, estimate, or hallucinate any financial numbers, statistics, or ratios from memory. "
+            "You MUST only use the structured financial data provided in the prompt context. "
+            "If any metric or value is not present in the context, explicitly state that it is not available."
+        )
+        prompt = prompt + no_hallucinate_clause + override_section
 
         return prompt
 

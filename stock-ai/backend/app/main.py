@@ -31,19 +31,37 @@ async def lifespan(_: FastAPI):
     refresher_task = None
     try:
         Base.metadata.create_all(bind=engine)
-        seed_database()
         
+        # Inline schema migrations for companies table
+        from sqlalchemy.orm import Session
+        from sqlalchemy import text
+        with Session(engine) as db_session:
+            try:
+                db_session.execute(text("ALTER TABLE companies ADD COLUMN last_updated VARCHAR(255)"))
+                db_session.commit()
+                logger.info("Database Migration: Added last_updated column to companies table.")
+            except Exception:
+                db_session.rollback()
+            try:
+                db_session.execute(text("ALTER TABLE companies ADD COLUMN data_source VARCHAR(255)"))
+                db_session.commit()
+                logger.info("Database Migration: Added data_source column to companies table.")
+            except Exception:
+                db_session.rollback()
+
+        seed_database()
+
         # Start background news refresher (Feature 6)
         from app.services.news_refresher import NewsRefresher
         from app.services.news.news_service import NewsServiceFactory
-        
+
         news_svc = NewsServiceFactory.create_news_service(settings)
         if news_svc:
             refresher = NewsRefresher(settings, news_svc)
             import asyncio
             refresher_task = asyncio.create_task(refresher.start_loop())
             logger.info("Background news refresher task started.")
-            
+
         logger.info("Application startup completed.")
         yield
     except SettingsError:
@@ -76,7 +94,13 @@ app.include_router(auth_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://ai-research-assistant-two-phi.vercel.app"],
+    allow_origins=[
+        "https://ai-research-assistant-two-phi.vercel.app",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -57,6 +57,7 @@ class Settings:
     news_top_articles: int            # how many articles to fetch per company
     news_max_age_days: int            # skip articles older than this
     news_cache_ttl_hours: int         # cache hit threshold (default 24h)
+    financial_cache_ttl_hours: int    # financial cache hit threshold (default 24h)
 
     # ── Configurable Providers (Feature 13) ────────────────────────────────────
     llm_provider: str                 # "gemini" | "openai" | "claude"
@@ -271,6 +272,12 @@ def get_settings() -> Settings:
             _get_env("NEWS_CACHE_TTL_HOURS"),
             default=24,
             name="NEWS_CACHE_TTL_HOURS",
+            min_value=1,
+        ),
+        financial_cache_ttl_hours=_parse_int(
+            _get_env("FINANCIAL_CACHE_TTL_HOURS"),
+            default=24,
+            name="FINANCIAL_CACHE_TTL_HOURS",
             min_value=1,
         ),
         # Configurable Providers (Feature 13)

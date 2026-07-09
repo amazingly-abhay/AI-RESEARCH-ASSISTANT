@@ -178,6 +178,20 @@ class CompanyFetcher:
             
         db.commit()
         logger.info("CompanyFetcher: Saved %d historical rows for %s.", len(history), ticker_upper)
+        
+        # Auto-sync company current metrics with latest historical year record
+        latest_hist = db.query(CompanyFinancialHistory).filter(
+            CompanyFinancialHistory.ticker == ticker_upper
+        ).order_by(CompanyFinancialHistory.year.desc()).first()
+        if latest_hist:
+            company = db.query(Company).filter(Company.ticker == ticker_upper).first()
+            if company:
+                company.revenue = latest_hist.revenue
+                company.profit = latest_hist.profit
+                company.eps = latest_hist.eps
+                db.commit()
+                logger.info("CompanyFetcher: Synchronized company table metrics with latest historical year %d for %s.", latest_hist.year, ticker_upper)
+                
         return history
 
     def fetch_dividend_history(self, db: Session, ticker: str) -> list[CompanyDividendPayload]:

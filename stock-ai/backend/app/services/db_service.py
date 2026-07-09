@@ -89,7 +89,10 @@ class DBService:
                 "competitors": company.competitors.split(",") if company.competitors else [],
                 "website": company.website,
                 "listing_exchange": company.listing_exchange,
-                "country": company.country
+                "country": company.country,
+                "last_updated": company.last_updated,
+                "data_source": company.data_source,
+                "is_live": getattr(company, "_is_live", None)
             }
 
             # 2. Fetch history
@@ -195,13 +198,32 @@ class DBService:
         return notes
 
     def _to_snapshot(self, company: Company) -> CompanySnapshot:
+        latest_hist = self.db.query(CompanyFinancialHistory).filter(
+            CompanyFinancialHistory.ticker == company.ticker
+        ).order_by(CompanyFinancialHistory.year.desc()).first()
+        
+        revenue = company.revenue
+        profit = company.profit
+        eps = company.eps
+        pe_ratio = company.pe_ratio
+        
+        if latest_hist:
+            revenue = latest_hist.revenue
+            profit = latest_hist.profit
+            eps = latest_hist.eps
+            logger.info("db_service: Overwriting CompanySnapshot current metrics with latest history year %d for %s", latest_hist.year, company.ticker)
+
+        is_live = getattr(company, "_is_live", None)
         return CompanySnapshot(
             ticker=company.ticker,
             company_name=company.company_name,
-            revenue=company.revenue,
-            profit=company.profit,
-            eps=company.eps,
-            pe_ratio=company.pe_ratio,
+            revenue=revenue,
+            profit=profit,
+            eps=eps,
+            pe_ratio=pe_ratio,
+            last_updated=company.last_updated,
+            data_source=company.data_source,
+            is_live=is_live
         )
 
     def _normalize(self, value: str) -> str:

@@ -74,6 +74,21 @@ class HybridRetriever:
         ticker = ticker.upper()
         logger.info("HybridRetriever: detected ticker=%s, name=%s, confidence=%s", ticker, name, confidence)
 
+        # Trigger Active Freshness Validation & Refresh Pipeline
+        from app.services.freshness_validator import FreshnessValidator
+        last_upd, d_src, is_l, warn_m = FreshnessValidator.validate_and_refresh_financials(
+            db=self._db,
+            ticker=ticker,
+            ai_service=self._ai,
+            settings=self._settings,
+            query=question
+        )
+        if warn_m:
+            logger.warning("HybridRetriever: Freshness warning: %s", warn_m)
+            company = self._db.query(Company).filter(Company.ticker == ticker).first()
+            if company:
+                company._freshness_warning = warn_m
+
         if not force_refresh:
             force_refresh = self._is_refresh_requested(question)
             if force_refresh:

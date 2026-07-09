@@ -80,6 +80,9 @@ class CompanySnapshot(BaseModel):
     profit: float
     eps: float
     pe_ratio: float
+    last_updated: str | None = None
+    data_source: str | None = None
+    is_live: bool | None = None
 
 
 class RetrievalContext(BaseModel):
